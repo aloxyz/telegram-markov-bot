@@ -5,6 +5,8 @@ import json
 import re
 import random
 import os
+import requests
+from bs4 import BeautifulSoup
 
 #help command
 def help(update: Update, context: CallbackContext):
@@ -82,9 +84,26 @@ def gen(update: Update, context: CallbackContext):
     #send message
     update.message.reply_text(random_sentence(model, length))
 
+def gen_url(update: Update, context: CallbackContext):
+    """generate chain based on url"""
+
+    if(len(context.args) != 0):
+        content = requests.get(context.args[0]).content
+        length = int(context.args[1])
+        
+        #check if url is an html page or not
+        if(bool(BeautifulSoup(content, "html.parser").find())):
+            text = BeautifulSoup(content).text
+        else:
+            text = content
+            
+    text_model = markovify.Text(text, well_formed = False)
+    update.message.reply_text(random_sentence(text_model, length))
+
+
 
 updater = Updater(os.getenv('BOT_KEY'))
 updater.dispatcher.add_handler(CommandHandler('gen', gen))
-
+updater.dispatcher.add_handler(CommandHandler('gen_url', gen_url))
 updater.start_polling()
 updater.idle()
