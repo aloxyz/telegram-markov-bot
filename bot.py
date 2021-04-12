@@ -1,109 +1,59 @@
 from telegram import Update
 from telegram.ext import Updater, CommandHandler, CallbackContext
 import markovify
-import json
-import re
-import random
 import os
 import requests
 from bs4 import BeautifulSoup
+from markov import *
+import urllib.parse as urlparse
+
+if(os.getenv('DB_PATH')):
+    print("[*] Building models...")
+    models = make_models_from_path(os.getenv('DB_PATH'), 'messages', 1, True)
+    print(f"[*] Built models {models.keys()}")
 
 #help command
 def help(update: Update, context: CallbackContext):
     update.message.reply_text(
-        """
-        Usage: /gen [model].json [number of max chars]
-        
-        Available models:
-        lambda - eng
-        wotannazi - eng
-        /g/ - eng
-        canalw - ita
-        
-        Example: /gen lambda 240
-        """)
-
-def list_to_string(db):
-    """convert a list of strings into a single one"""
-    texts = []
-    for message in db:
-        if('text' in message and isinstance(message['text'], str)):
-            texts.append(message['text'])
-    return ' '.join(texts)
-
-def parse_text(text, rules):
-    """subtract text based on regex rules"""
-    for match in rules:
-        parsed = re.sub(match, '', list_to_string(text))
-    return parsed
-
-def random_sentence(model, length):
-    """generate random sentence given a model and length"""
-    output = ""
-    while(not output):
-        output = model.make_short_sentence(length, tries=100)
-    return output
- 
-def make_models(file_names, key, state_size, well_formed):
-    """returns a dictionary of 'command': model pairs given a list of filenames"""
-    models = []
-    commands = []
-
-    for file_name in file_names:
-
-        #open and parse the json file
-        db = json.loads(open(file_name).read())[key]
-        
-        #append new model and command to their respective lists
-        commands.append(file_name)
-        models.append(markovify.NewlineText(list_to_string(db), state_size = state_size, well_formed = well_formed)) 
-
-    return dict(zip(commands, models))
-
-#regex match
-matches = [r'http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\(\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+', r'(\<.*?\>)', r'\>']
-#returns a dict
-models = make_models(["lambda.json", "canalw.json", "g.json"], 'messages', 1, True)
-print(models)
+    """
+    Usage:
+    /gen [[model].json | url] (number of max chars)
+    Example: /gen gnu.org
+    """)
 
 def gen(update: Update, context: CallbackContext):
-    """/gen command handler"""
-    #args
-    if(len(context.args) != 0 ):
-        model = models[context.args[0]]
-        length = int(context.args[1])
-    
-    #noargs default
-    #else:
-    #    model = random.choice(models['command'])
-    #    length = 240
-    
-    #debug
-    print(f"model: {model}, length: {str(length)}\n")
-    
-    #send message
-    update.message.reply_text(random_sentence(model, length))
-
-def gen_url(update: Update, context: CallbackContext):
     """generate chain based on url"""
-
-    if(len(context.args) != 0):
-        content = requests.get(context.args[0]).content
+    if(context.args):
+        content = context.args[0]
+        length = 240
+    if(len(context.args) == 2):
         length = int(context.args[1])
-        
-        #check if url is an html page or not
-        if(bool(BeautifulSoup(content, "html.parser").find())):
-            text = BeautifulSoup(content).text
-        else:
-            text = content
+
+    print(f"[{update.message.from_user.username}] content: {content}, length: {int(length)}")
+
+    if(urlparse.urlparse(content)):
+        try:
+            output = random_sentence(make_model_from_url(content, 1, False), length)
+        except requests.exceptions.MissingSchema:
+            output = random_sentence(make_model_from_url("http://" + content, 1, False), length)
+        except IndexError:
+            output = "Invalid arguments"
+        except requests.exceptions.SSLError:
+            output = "Bad handshake"
             
-    text_model = markovify.Text(text, well_formed = False)
-    update.message.reply_text(random_sentence(text_model, length))
+    else:
+        try:
+            output = random_sentence(models[content], length)
+        except IndexError:
+            output = "Invalid arguments"
+    
+    update.message.reply_text(output)
 
 
 
 updater = Updater(os.getenv('BOT_KEY'))
+updater.dispatcher.add_handler(CommandHandler('help', help))
 updater.dispatcher.add_handler(CommandHandler('gen', gen))
-updater.dispatcher.add_handler(CommandHandler('gen_url', gen_url))
+#updater.dispatcher.add_handler(CommandHandler('gen_url', gen_url))
 updater.start_polling()
 updater.idle()
