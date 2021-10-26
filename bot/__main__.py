@@ -35,8 +35,8 @@ def gen(update: Update, context: CallbackContext):
 
     if urlparse.urlparse(content):
         try:
-            output = markov.BeautifulSouprandom_sentence(
-                markov.BeautifulSoupmake_model_from_url(content, 1, False), length
+            output = markov.random_sentence(
+                markov.make_model_from_url(content, 1, False), length
             )
         except requests.exceptions.MissingSchema:
             output = markov.random_sentence(
